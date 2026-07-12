@@ -1,0 +1,12 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Mcp (C#)",
+      "type": "dotnet",
+      "request": "launch",
+      "projectPath": "${workspaceFolder}/src/Mcp/Mcp.csproj",
+      "preLaunchTask": "dotnet: build"
+    }
+  ]
+}

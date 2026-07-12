@@ -1,0 +1,9 @@
+# IDE cache folders
+.vs
+.idea
+
+# Build output
+src/artifacts/
+
+# OS files
+.DS_Store
