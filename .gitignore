@@ -3,7 +3,7 @@
 .idea
 
 # Build output
-src/artifacts/
+artifacts
 
 # OS files
 .DS_Store

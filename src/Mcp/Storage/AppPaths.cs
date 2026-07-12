@@ -1,29 +1,31 @@
 namespace Axerie.StudentLoans.Mcp.Storage;
 
-/// <summary>Centralizes on-disk locations under ~/.studentloanmcp, isolated per account.</summary>
 public static class AppPaths
 {
-    public static string RootDir { get; } =
-        Environment.GetEnvironmentVariable("STUDENT_LOAN_MCP_HOME")
-        ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".studentloanmcp");
-
+    public static string RootDir { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".studentloanmcp");
     public static string AccountsFile => Path.Combine(RootDir, "accounts.json");
-
-    public static string TokensDir => Path.Combine(RootDir, "tokens");
-
+    public static string SessionsDir => Path.Combine(RootDir, "tokens");
     public static string ProfilesDir => Path.Combine(RootDir, "profiles");
+    public static string KeysDir => Path.Combine(RootDir, "keys");
 
-    public static string TokenFile(string accountId) => Path.Combine(TokensDir, $"{accountId}.json");
-
-    /// <summary>A dedicated persistent Playwright browser profile per account, so each account's
-    /// "remember this device" cookie/local-storage state stays isolated (fixes Nelnet only
-    /// remembering one login when multiple accounts share a browser profile).</summary>
-    public static string ProfileDir(string accountId) => Path.Combine(ProfilesDir, accountId);
+    public static string SessionFile(Guid accountId) => Path.Combine(SessionsDir, $"{accountId}.json");
+    public static string ProfileDir(Guid accountId) => Path.Combine(ProfilesDir, accountId.ToString());
 
     public static void EnsureDirs()
     {
-        Directory.CreateDirectory(RootDir);
-        Directory.CreateDirectory(TokensDir);
-        Directory.CreateDirectory(ProfilesDir);
+        CreateOwnerOnlyDir(RootDir);
+        CreateOwnerOnlyDir(SessionsDir);
+        CreateOwnerOnlyDir(ProfilesDir);
+        CreateOwnerOnlyDir(KeysDir);
+    }
+
+    // Session data/keys are sensitive; restrict them to the owning user (no-op on Windows, which
+    // already scopes the user profile directory via ACLs).
+    private static void CreateOwnerOnlyDir(string path)
+    {
+        Directory.CreateDirectory(path);
+
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
     }
 }

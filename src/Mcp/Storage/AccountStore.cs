@@ -5,52 +5,88 @@ namespace Axerie.StudentLoans.Mcp.Storage;
 
 public sealed class AccountStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
+    private readonly SemaphoreSlim sync = new(1, 1);
 
-    public IReadOnlyList<Account> Load()
+    public async Task<IReadOnlyList<Account>> GetAccountsAsync(CancellationToken cancellationToken)
     {
         AppPaths.EnsureDirs();
         if (!File.Exists(AppPaths.AccountsFile))
             return [];
 
-        var json = File.ReadAllText(AppPaths.AccountsFile);
-        return JsonSerializer.Deserialize<List<Account>>(json) ?? [];
+        await using var stream = File.OpenRead(AppPaths.AccountsFile);
+        return await JsonSerializer.DeserializeAsync<List<Account>>(stream, JsonSerializerOptions.Web, cancellationToken) ?? [];
     }
 
-    public void Save(IReadOnlyList<Account> accounts)
+    public async Task<Account?> GetAccountAsync(Guid accountId, CancellationToken cancellationToken) =>
+        (await GetAccountsAsync(cancellationToken)).FirstOrDefault(a => a.Id == accountId);
+
+    public async Task<Account> AddAccountAsync(string displayName, CancellationToken cancellationToken)
+    {
+        await this.sync.WaitAsync(cancellationToken);
+        try
+        {
+            var accounts = (await GetAccountsAsync(cancellationToken)).ToList();
+            var account = new Account(Guid.NewGuid(), displayName);
+            accounts.Add(account);
+            await StoreAccountsAsync(accounts, cancellationToken);
+
+            return account;
+        }
+        finally
+        {
+            this.sync.Release();
+        }
+    }
+
+    public async Task<Account> UpdateAccountAsync(Guid id, string displayName, CancellationToken cancellationToken)
+    {
+        await this.sync.WaitAsync(cancellationToken);
+        try
+        {
+            var accounts = (await GetAccountsAsync(cancellationToken)).ToList();
+            var index = accounts.FindIndex(a => a.Id == id);
+            if (index < 0)
+                throw new InvalidOperationException($"Account '{id}' does not exist.");
+
+            var account = new Account(id, displayName);
+            accounts[index] = account;
+            await StoreAccountsAsync(accounts, cancellationToken);
+            return account;
+        }
+        finally
+        {
+            this.sync.Release();
+        }
+    }
+
+    public async Task<bool> DeleteAccountAsync(Guid id, CancellationToken cancellationToken)
+    {
+        await this.sync.WaitAsync(cancellationToken);
+        try
+        {
+            var accounts = (await GetAccountsAsync(cancellationToken)).ToList();
+            var removed = accounts.RemoveAll(a => a.Id == id) > 0;
+            if (removed)
+            {
+                await StoreAccountsAsync(accounts, cancellationToken);
+                var sessionFile = AppPaths.SessionFile(id);
+                if (File.Exists(sessionFile)) File.Delete(sessionFile);
+            }
+
+            return removed;
+        }
+        finally
+        {
+            this.sync.Release();
+        }
+    }
+
+    private async Task StoreAccountsAsync(List<Account> accounts, CancellationToken cancellationToken)
     {
         AppPaths.EnsureDirs();
-        var json = JsonSerializer.Serialize(accounts, JsonOptions);
-        var tmp = AppPaths.AccountsFile + ".tmp";
-        File.WriteAllText(tmp, json);
+        var json = JsonSerializer.Serialize(accounts, JsonSerializerOptions.Web);
+        var tmp = $"{AppPaths.AccountsFile}.{Guid.NewGuid():N}.tmp";
+        await File.WriteAllTextAsync(tmp, json, cancellationToken);
         File.Move(tmp, AppPaths.AccountsFile, overwrite: true);
-    }
-
-    public Account? Find(string accountId) =>
-        Load().FirstOrDefault(a => a.Id.Equals(accountId, StringComparison.OrdinalIgnoreCase));
-
-    public Account Add(string id, string provider, string displayName)
-    {
-        var accounts = Load().ToList();
-        if (accounts.Any(a => a.Id.Equals(id, StringComparison.OrdinalIgnoreCase)))
-            throw new InvalidOperationException($"Account '{id}' already exists.");
-
-        var account = new Account(id, provider.Trim().ToLowerInvariant(), displayName);
-        accounts.Add(account);
-        Save(accounts);
-        return account;
-    }
-
-    public bool Remove(string id)
-    {
-        var accounts = Load().ToList();
-        var removed = accounts.RemoveAll(a => a.Id.Equals(id, StringComparison.OrdinalIgnoreCase)) > 0;
-        if (removed)
-        {
-            Save(accounts);
-            var tokenFile = AppPaths.TokenFile(id);
-            if (File.Exists(tokenFile)) File.Delete(tokenFile);
-        }
-        return removed;
     }
 }
