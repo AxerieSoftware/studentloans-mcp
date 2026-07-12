@@ -1,0 +1,18 @@
+<Solution>
+
+  <!-- sln -->
+  <Folder Name="/sln/">
+    <File Path=".editorconfig" />
+    <File Path=".gitignore" />
+    <File Path="Directory.Build.props" />
+    <File Path="README.md" />
+  </Folder>
+
+  <!-- src -->
+  <Folder Name="/src/">
+    <File Path="src/Directory.Build.props" />
+    <File Path="src/Directory.Packages.props" />
+    <Project Path="src/Mcp/Mcp.csproj" />
+  </Folder>
+
+</Solution>
